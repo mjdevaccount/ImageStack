@@ -181,3 +181,230 @@ def preprocess_image_for_vision(
     logger.info(f"Vision preprocess finished: {out_path}")
     return str(out_path)
 
+
+# --- DEBUG PIPELINES ---------------------------------------------------------
+
+
+def debug_preprocess_ocr_pipeline(
+    path: str,
+    out_dir: Path,
+    config: Optional[OcrPreprocessConfig] = None,
+) -> tuple[str, dict]:
+    """
+    Run the OCR pipeline but save each intermediate stage into out_dir.
+
+    Returns:
+        final_rel_path: relative path (inside zip) for final OCR image
+        metadata: dict describing shapes, angle, etc.
+    """
+    config = config or OcrPreprocessConfig()
+    src_path = Path(path)
+    if not src_path.exists():
+        raise FileNotFoundError(path)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"[debug] OCR pipeline start: {path}")
+
+    metadata: dict = {
+        "config": {
+            "auto_orient": config.auto_orient,
+            "denoise": config.denoise,
+            "enhance_contrast": config.enhance_contrast,
+            "binarize": config.binarize,
+            "deskew": config.deskew,
+            "target_long_edge": config.target_long_edge,
+        },
+        "stages": [],
+    }
+
+    # Load + orient
+    img = _load_and_orient(str(src_path), auto_orient=config.auto_orient)
+    img = _resize_long_edge(img, config.target_long_edge)
+    h, w = img.shape[:2]
+    metadata["original"] = {"width": w, "height": h}
+
+    # Stage 1: grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    stage1_path = out_dir / "ocr_stage_01_gray.png"
+    cv2.imwrite(str(stage1_path), gray)
+    metadata["stages"].append(
+        {
+            "name": "gray",
+            "file": "ocr/ocr_stage_01_gray.png",
+            "shape": [int(h), int(w)],
+        }
+    )
+
+    # Stage 2: denoise
+    if config.denoise:
+        gray_dn = _denoise(gray)
+    else:
+        gray_dn = gray
+    h2, w2 = gray_dn.shape[:2]
+    stage2_path = out_dir / "ocr_stage_02_denoised.png"
+    cv2.imwrite(str(stage2_path), gray_dn)
+    metadata["stages"].append(
+        {
+            "name": "denoised",
+            "file": "ocr/ocr_stage_02_denoised.png",
+            "shape": [int(h2), int(w2)],
+        }
+    )
+
+    # Stage 3: contrast
+    if config.enhance_contrast:
+        gray_ct = _enhance_contrast_gray(gray_dn)
+    else:
+        gray_ct = gray_dn
+    h3, w3 = gray_ct.shape[:2]
+    stage3_path = out_dir / "ocr_stage_03_contrast.png"
+    cv2.imwrite(str(stage3_path), gray_ct)
+    metadata["stages"].append(
+        {
+            "name": "contrast",
+            "file": "ocr/ocr_stage_03_contrast.png",
+            "shape": [int(h3), int(w3)],
+        }
+    )
+
+    # Stage 4: binarize
+    if config.binarize:
+        gray_bn = _binarize(gray_ct)
+    else:
+        gray_bn = gray_ct
+    h4, w4 = gray_bn.shape[:2]
+    stage4_path = out_dir / "ocr_stage_04_binarized.png"
+    cv2.imwrite(str(stage4_path), gray_bn)
+    metadata["stages"].append(
+        {
+            "name": "binarized",
+            "file": "ocr/ocr_stage_04_binarized.png",
+            "shape": [int(h4), int(w4)],
+        }
+    )
+
+    # Stage 5: deskew (optional)
+    deskew_angle = 0.0
+    final = gray_bn
+    if config.deskew:
+        try:
+            inv = cv2.bitwise_not(gray_bn)
+            coords = np.column_stack(np.where(inv > 0))
+            if coords.size > 0:
+                rect = cv2.minAreaRect(coords)
+                angle = rect[-1]
+                if angle < -45:
+                    angle = -(90 + angle)
+                else:
+                    angle = -angle
+
+                deskew_angle = float(angle)
+
+                if abs(angle) >= 0.5:
+                    (h5, w5) = gray_bn.shape[:2]
+                    center = (w5 // 2, h5 // 2)
+                    M = cv2.getRotationMatrix2D(center, angle, 1.0)
+                    final = cv2.warpAffine(
+                        gray_bn,
+                        M,
+                        (w5, h5),
+                        flags=cv2.INTER_CUBIC,
+                        borderMode=cv2.BORDER_REPLICATE,
+                    )
+                else:
+                    final = gray_bn
+            else:
+                final = gray_bn
+        except Exception as ex:
+            logger.warning(f"[debug] OCR deskew failed: {ex}")
+            final = gray_bn
+
+    h5, w5 = final.shape[:2]
+    final_path = out_dir / "ocr_final.png"
+    cv2.imwrite(str(final_path), final)
+    metadata["final"] = {
+        "file": "ocr/ocr_final.png",
+        "shape": [int(h5), int(w5)],
+        "deskew_angle": float(deskew_angle),
+    }
+
+    logger.info(f"[debug] OCR pipeline finished: {final_path}")
+    return "ocr/ocr_final.png", metadata
+
+
+def debug_preprocess_vision_pipeline(
+    path: str,
+    out_dir: Path,
+    target_long_edge: int = 1600,
+    auto_orient: bool = True,
+    sharpen: bool = True,
+) -> tuple[str, dict]:
+    """
+    Run the vision pipeline but save each intermediate stage into out_dir.
+
+    Returns:
+        final_rel_path: relative path (inside zip) for final Vision image
+        metadata: dict describing shapes, etc.
+    """
+    src_path = Path(path)
+    if not src_path.exists():
+        raise FileNotFoundError(path)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"[debug] Vision pipeline start: {path}")
+
+    metadata: dict = {
+        "config": {
+            "auto_orient": auto_orient,
+            "sharpen": sharpen,
+            "target_long_edge": target_long_edge,
+        },
+        "stages": [],
+    }
+
+    # Load + orient
+    img = _load_and_orient(str(src_path), auto_orient=auto_orient)
+    img = _resize_long_edge(img, target_long_edge)
+    h, w = img.shape[:2]
+    metadata["original"] = {"width": w, "height": h}
+
+    # Stage 1: resized
+    stage1_path = out_dir / "vision_stage_01_resized.png"
+    cv2.imwrite(str(stage1_path), img)
+    metadata["stages"].append(
+        {
+            "name": "resized",
+            "file": "vision/vision_stage_01_resized.png",
+            "shape": [int(h), int(w)],
+        }
+    )
+
+    # Stage 2: sharpen
+    if sharpen:
+        blurred = cv2.GaussianBlur(img, (0, 0), 3)
+        sharp = cv2.addWeighted(img, 1.5, blurred, -0.5, 0)
+    else:
+        sharp = img
+    h2, w2 = sharp.shape[:2]
+    stage2_path = out_dir / "vision_stage_02_sharpened.png"
+    cv2.imwrite(str(stage2_path), sharp)
+    metadata["stages"].append(
+        {
+            "name": "sharpened",
+            "file": "vision/vision_stage_02_sharpened.png",
+            "shape": [int(h2), int(w2)],
+        }
+    )
+
+    final_path = out_dir / "vision_final.png"
+    cv2.imwrite(str(final_path), sharp)
+    metadata["final"] = {
+        "file": "vision/vision_final.png",
+        "shape": [int(h2), int(w2)],
+    }
+
+    logger.info(f"[debug] Vision pipeline finished: {final_path}")
+    return "vision/vision_final.png", metadata
+
