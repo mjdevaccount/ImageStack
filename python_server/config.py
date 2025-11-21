@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     clip_model: str = "ViT-L-14"
     clip_pretrained: str = "openai"
     embedding_dim: int = 768  # ViT-L-14 dimension
+    
+    # PhotoBrain QA settings
+    photobrain_qa_model: str = "phi4:14b"  # Ollama model for RAG Q&A
 
     class Config:
         env_prefix = "IMAGESTACK_"
