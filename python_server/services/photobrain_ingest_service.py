@@ -22,6 +22,7 @@ from .image_preprocess import (
 )
 from .photobrain_embedding import PhotoBrainEmbedder
 from .photobrain_store import PhotoBrainStore
+from .photobrain_autotag import PhotoBrainAutoTagger
 
 
 def _compute_sha256(path: Path) -> str:
@@ -98,9 +99,11 @@ class PhotoBrainIngestService:
         self,
         embedder: PhotoBrainEmbedder,
         store: PhotoBrainStore,
+        auto_tagger: Optional[PhotoBrainAutoTagger] = None,
     ) -> None:
         self.embedder = embedder
         self.store = store
+        self.auto_tagger = auto_tagger or PhotoBrainAutoTagger()
 
     async def ingest_image(
         self,
@@ -109,12 +112,14 @@ class PhotoBrainIngestService:
         vision: bool = False,
         preprocess: bool = True,
         embed: bool = True,
+        auto_tag: bool = True,
     ) -> PhotoBrainIngestResponse:
         """
         Full ingestion pipeline:
         - Save raw image
         - Optional preprocessing
         - Optional OCR
+        - Optional auto-tagging (category + tags)
         - Optional embedding (image+text)
         - Store in Qdrant
         - Return rich metadata response
@@ -153,7 +158,19 @@ class PhotoBrainIngestService:
         if ocr:
             ocr_text, ocr_conf = _run_easyocr(work_path)
 
-        # 6. Embedding
+        # 6. Auto-tagging / categorization
+        autotag_result = None
+        if auto_tag and self.auto_tagger is not None:
+            try:
+                autotag_result = await self.auto_tagger.auto_tag(
+                    str(work_path),
+                    ocr_text=ocr_text,
+                )
+            except Exception as ex:
+                logger.error(f"[PhotoBrain] Auto-tagging failed: {ex}")
+                autotag_result = None
+
+        # 7. Embedding
         vector = None
         if embed:
             try:
@@ -166,7 +183,7 @@ class PhotoBrainIngestService:
                 logger.error(f"[PhotoBrain] Embedding failed: {ex}")
                 vector = None
 
-        # 7. Build metadata & store
+        # 8. Build metadata & store
         now = datetime.now(timezone.utc)
         image_id = uuid.uuid4().hex
 
@@ -180,6 +197,16 @@ class PhotoBrainIngestService:
             "ocr_confidence": ocr_conf,
             "exif": exif_meta,
         }
+
+        # Add auto-tagging results to payload
+        if autotag_result is not None:
+            payload["category"] = autotag_result.category
+            payload["tags"] = autotag_result.tags
+            payload["autotag"] = {
+                "model": self.auto_tagger.model,
+                "confidence": autotag_result.confidence,
+                "raw": autotag_result.raw_json,
+            }
 
         if vector is not None:
             self.store.upsert_image(image_id, vector=vector, payload=payload)

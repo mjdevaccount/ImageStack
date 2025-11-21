@@ -13,6 +13,7 @@ from ..models.photobrain_models import PhotoBrainIngestResponse
 from ..services.photobrain_embedding import PhotoBrainEmbedder
 from ..services.photobrain_store import PhotoBrainStore, PhotoBrainStoreConfig
 from ..services.photobrain_ingest_service import PhotoBrainIngestService
+from ..services.photobrain_autotag import PhotoBrainAutoTagger
 
 
 router = APIRouter()
@@ -40,7 +41,8 @@ _store_config = PhotoBrainStoreConfig(
     vector_size=_embedder.dim,
 )
 _store = PhotoBrainStore(_qdrant_client, _store_config)
-_ingest_service = PhotoBrainIngestService(_embedder, _store)
+_auto_tagger = PhotoBrainAutoTagger()
+_ingest_service = PhotoBrainIngestService(_embedder, _store, auto_tagger=_auto_tagger)
 
 
 # --- Routes ------------------------------------------------------------------
@@ -59,6 +61,10 @@ async def photobrain_ingest(
         description="Run preprocessing (orientation, resize, contrast, etc.)",
     ),
     embed: bool = Query(True, description="Store CLIP embedding in Qdrant"),
+    auto_tag: bool = Query(
+        True,
+        description="Enable automatic tagging/category classification",
+    ),
 ):
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
@@ -69,5 +75,6 @@ async def photobrain_ingest(
         vision=vision,
         preprocess=preprocess,
         embed=embed,
+        auto_tag=auto_tag,
     )
 
