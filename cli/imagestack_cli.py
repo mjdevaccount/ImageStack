@@ -161,6 +161,31 @@ def ocr_image(path: str, preprocess: bool = False):
 
 
 # ---------------------------------------------------------
+# Watcher command
+# ---------------------------------------------------------
+
+def run_watcher():
+    """
+    Run the PhotoBrain background watcher (real-time ingestion).
+    """
+    print("[watch] Starting PhotoBrain watcher (Ctrl+C to stop)...")
+    print("[watch] Drop images into watched folders for instant ingestion with auto-tagging")
+    print()
+    
+    try:
+        from python_server.services.photobrain_watcher import main as watcher_main
+        watcher_main()
+    except KeyboardInterrupt:
+        print("\n[watch] Stopped")
+        return 0
+    except Exception as ex:
+        print(f"[error] Watcher failed: {ex}")
+        return 1
+    
+    return 0
+
+
+# ---------------------------------------------------------
 # Main CLI parser
 # ---------------------------------------------------------
 
@@ -188,6 +213,9 @@ def main():
     p_ask.add_argument("question", help="Natural language question (e.g., 'What is my generator serial number?')")
     p_ask.add_argument("--top-k", type=int, default=8, help="Number of images to consider")
 
+    # watch (background watcher)
+    p_watch = sub.add_parser("watch", help="Run PhotoBrain background watcher (real-time auto-ingestion)")
+
     args = parser.parse_args()
 
     if args.command == "describe":
@@ -198,6 +226,8 @@ def main():
         return photobrain_find(args.query, days=args.days, tag=args.tag)
     elif args.command == "ask":
         return photobrain_ask(args.question, top_k=args.top_k)
+    elif args.command == "watch":
+        return run_watcher()
     else:
         parser.print_help()
         return 1

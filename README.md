@@ -3,16 +3,23 @@
 > **Local, autonomous visual memory system with multimodal AI**  
 > *Your photos label themselves while you live your life* ✨
 
-[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/mjdevaccount/ImageStack)
+[![Version](https://img.shields.io/badge/version-0.5.1-blue.svg)](https://github.com/mjdevaccount/ImageStack)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
-### 🆕 **Latest: Phase A.5 - Auto-Tagger**
+### 🆕 **Latest: Phase A.5b - Real-Time Watcher**
+- **Instant Ingestion**: Drop images into inbox folders → auto-processed in seconds
+- **Watchdog Integration**: Real-time file system monitoring (no polling!)
+- **Auto-Organization**: Processed files moved to `processed/` subfolder
+- **File Stability Detection**: Waits for writes to complete before processing
+- **Duplicate Prevention**: SHA256 hash-based deduplication
+- **Zero Config**: Default inbox at `C:\PhotoBrain\Inbox` (configurable)
+
+### ✨ **Phase A.5 - Auto-Tagger**
 - **12 Document Categories**: Receipts, invoices, whiteboards, serial plates, screenshots, and more
 - **Auto-Generated Tags**: 3-10 searchable labels per image
 - **Rich Filtering**: Date ranges, tags, OCR text, confidence, device, category
 - **LLM-Powered Q&A**: *"What's the total on my last Home Depot receipt?"*
-- **Zero Configuration**: Works out of the box with existing images
 
 ## 🎯 Overview
 
@@ -73,11 +80,13 @@
 - **LLM-Powered Q&A**: 🆕 Ask natural language questions about your image collection
 
 #### **Autonomous Ingestion**
-- **File Watching**: Monitor Pictures, Screenshots, Downloads
+- **Real-Time Watcher**: 🆕 Instant ingestion using watchdog (inotify-based)
+- **Background Daemon**: Polling-based ingestion with configurable intervals
 - **Smart Detection**: mtime + hash-based change detection
-- **Background Daemon**: Continuous ingestion with configurable intervals
+- **File Stability**: Waits for writes to complete before ingesting
 - **SQLite Index**: Track processed files, prevent re-ingestion
-- **Auto-Classification**: 🆕 Every image automatically categorized and tagged on ingestion
+- **Auto-Classification**: Every image automatically categorized and tagged
+- **Auto-Organization**: Moves processed files to `processed/` subfolder
 
 #### **REST API**
 - **FastAPI**: Modern async Python framework
@@ -87,7 +96,12 @@
 
 #### **Developer Tools**
 - **Debug Lab**: HTML viewer for preprocessing pipeline visualization
-- **CLI Tools**: Command-line interface for common operations
+- **CLI Tools**: Command-line interface for all operations
+  - `describe` - Vision AI descriptions
+  - `ocr` - Text extraction
+  - `find` - Semantic search
+  - `ask` - LLM-powered Q&A
+  - `watch` 🆕 - Real-time file watcher
 - **Comprehensive Logs**: Structured logging with loguru
 - **Health Checks**: Monitor system status
 
@@ -367,8 +381,9 @@ IMAGESTACK_EMBEDDING_DIM=768
 
 # PhotoBrain Auto-Ingestor Configuration
 PHOTOBRAIN_BASE_URL=http://localhost:8090
+PHOTOBRAIN_API_BASE=http://localhost:8090  # For real-time watcher
 PHOTOBRAIN_WATCH_DIRS=C:\Users\Matt\Pictures;C:\Users\Matt\Downloads
-PHOTOBRAIN_POLL_INTERVAL=30  # seconds
+PHOTOBRAIN_POLL_INTERVAL=30  # seconds (for daemon mode)
 PHOTOBRAIN_INDEX_DB=~/.photobrain/index.db
 ```
 
@@ -684,12 +699,27 @@ python -m cli.imagestack_cli ask "What is the total on my last Home Depot receip
 python -m cli.imagestack_cli ask "Show me my generator's serial number" --top-k 5
 ```
 
+**Real-Time Watcher** 🆕
+```powershell
+# Start real-time file watcher
+python -m cli.imagestack_cli watch
+
+# Or use launcher scripts
+.\scripts\start_photobrain_watcher.ps1  # PowerShell
+.\scripts\start_photobrain_watcher.bat  # CMD
+
+# Configure watch directories
+$env:PHOTOBRAIN_WATCH_DIRS="C:\PhotoBrain\Inbox,C:\Screenshots"
+$env:PHOTOBRAIN_API_BASE="http://localhost:8090"
+python -m cli.imagestack_cli watch
+```
+
 **CLI Filters:**
 - `--days N`: Last N days
 - `--tag TAG`: Filter by tag (substring match)
 - `--top-k N`: Number of results (for `ask`)
 
-### PhotoBrain Ingestor
+### PhotoBrain Ingestor (Polling Daemon)
 
 **Single Scan:**
 ```powershell
@@ -918,24 +948,26 @@ $env:PHOTOBRAIN_WATCH_DIRS="C:\Users\Matt\Pictures"
 
 ## 🗺️ Roadmap
 
-### ✅ Completed (v0.5.0)
+### ✅ Completed (v0.5.1)
 - [x] **Phase 0-1**: Ollama vision integration + EasyOCR with GPU
 - [x] **Phase 1.5**: OpenCV preprocessing pipelines + debug lab
-- [x] **Phase A.1**: Autonomous file watching daemon
+- [x] **Phase A.1**: Autonomous file watching daemon (polling)
 - [x] **Phase A.2**: Enhanced ingestion (CLIP + Qdrant + EXIF + OCR)
 - [x] **Phase A.3**: Query API (text search, image search, LLM Q&A)
 - [x] **Phase A.4**: Rich server-side filters (9 filter types)
 - [x] **Phase A.5**: Auto-tagging & categorization (12 document types)
+- [x] **Phase A.5b**: Real-time file watcher (watchdog/inotify)
 - [x] Multimodal embeddings (image + text)
-- [x] CLI tools (describe, ocr, find, ask)
+- [x] CLI tools (describe, ocr, find, ask, watch)
 - [x] Deduplication (SHA256 + mtime tracking)
+- [x] Auto-organization (processed/failed subfolders)
 
 ### 🚧 In Progress (v0.6.0)
 - [ ] Web dashboard UI (React + real-time updates)
-- [ ] Real-time file watching (inotify/watchdog)
 - [ ] Batch operations API
 - [ ] Export/import collections
 - [ ] Image editing & cropping in debug lab
+- [ ] Windows tray icon for watcher
 
 ### 🔮 Near Future (v0.7.0 - v0.9.0)
 - [ ] Face detection & clustering (OpenCV/dlib)
