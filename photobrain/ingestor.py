@@ -51,16 +51,16 @@ def _now_utc_ts() -> float:
 
 def ingest_file_to_imagestack(path: Path) -> dict:
     """
-    Sends the file to ImageStack's image-ingest endpoint.
+    Sends the file to ImageStack's PhotoBrain image-ingest endpoint.
 
     Assumes an API like:
 
-        POST {base_url}/rag/image
+        POST {base_url}/photobrain/ingest
         form-data: file=@...
 
     Returns: parsed JSON response (dict)
     """
-    url = f"{settings.base_url.rstrip('/')}/rag/image"
+    url = f"{settings.base_url.rstrip('/')}/photobrain/ingest"
     mime, _ = mimetypes.guess_type(str(path))
     if not mime or not mime.startswith("image/"):
         # Fallback, the server will still try to decode
