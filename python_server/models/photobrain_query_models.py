@@ -7,6 +7,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from .photobrain_filters import PhotoBrainFilterRequest
+
 
 class PhotoBrainSearchMatch(BaseModel):
     id: str
@@ -23,7 +25,8 @@ class PhotoBrainSearchMatch(BaseModel):
 
 class PhotoBrainTextSearchRequest(BaseModel):
     query: str = Field(..., description="Natural language query over OCR + metadata")
-    top_k: int = Field(8, ge=1, le=50, description="Max matches to return")
+    top_k: int = Field(12, ge=1, le=50, description="Max matches to return")
+    filters: Optional[PhotoBrainFilterRequest] = Field(None, description="Server-side filters")
 
 
 class PhotoBrainTextSearchResponse(BaseModel):
@@ -37,6 +40,7 @@ class PhotoBrainImageSearchResponse(BaseModel):
 class PhotoBrainQaRequest(BaseModel):
     question: str = Field(..., description="Question to ask over image memory")
     top_k: int = Field(8, ge=1, le=50, description="How many images to consider")
+    filters: Optional[PhotoBrainFilterRequest] = Field(None, description="Server-side filters")
 
 
 class PhotoBrainQaResponse(BaseModel):

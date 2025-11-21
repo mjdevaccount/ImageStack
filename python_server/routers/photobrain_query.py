@@ -72,14 +72,14 @@ async def photobrain_search_text(req: PhotoBrainTextSearchRequest) -> PhotoBrain
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    matches = _text_service.search(req.query, top_k=req.top_k)
+    matches = _text_service.search(req.query, top_k=req.top_k, filters=req.filters)
     return PhotoBrainTextSearchResponse(matches=matches)
 
 
 @router.post("/search/image", response_model=PhotoBrainImageSearchResponse)
 async def photobrain_search_image(
     file: UploadFile = File(...),
-    top_k: int = Query(8, ge=1, le=50),
+    top_k: int = Query(12, ge=1, le=50),
 ) -> PhotoBrainImageSearchResponse:
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
@@ -87,7 +87,10 @@ async def photobrain_search_image(
     saved_path = await save_temp_image(file)
     logger.info(f"[PhotoBrain/Query] Image search input saved at {saved_path}")
 
-    matches = _image_service.search(saved_path, top_k=top_k)
+    # Note: filters would need to be passed via query params or request body
+    # For now, image search doesn't support filters in the current API design
+    # This can be enhanced in a future version
+    matches = _image_service.search(saved_path, top_k=top_k, filters=None)
     try:
         Path(saved_path).unlink(missing_ok=True)
     except Exception as ex:
