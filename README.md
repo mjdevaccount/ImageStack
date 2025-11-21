@@ -1,11 +1,18 @@
 # PhotoBrain / ImageStack
 
 > **Local, autonomous visual memory system with multimodal AI**  
-> *Google Photos + ChatGPT Vision Memory, running entirely on your hardware*
+> *Your photos label themselves while you live your life* ✨
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/mjdevaccount/ImageStack)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/mjdevaccount/ImageStack)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
+
+### 🆕 **Latest: Phase A.5 - Auto-Tagger**
+- **12 Document Categories**: Receipts, invoices, whiteboards, serial plates, screenshots, and more
+- **Auto-Generated Tags**: 3-10 searchable labels per image
+- **Rich Filtering**: Date ranges, tags, OCR text, confidence, device, category
+- **LLM-Powered Q&A**: *"What's the total on my last Home Depot receipt?"*
+- **Zero Configuration**: Works out of the box with existing images
 
 ## 🎯 Overview
 
@@ -54,18 +61,23 @@
 - **OCR**: EasyOCR with GPU support, 80+ languages
 - **EXIF Extraction**: Camera model, datetime, GPS, orientation
 - **Preprocessing**: OpenCV pipelines for optimal OCR/vision quality
+- **Auto-Tagging**: 🆕 Vision-powered automatic categorization into 12 document types
+- **Auto-Labeling**: 🆕 Generates 3-10 searchable tags per image automatically
 
 #### **Vector Search & Memory**
 - **CLIP Embeddings**: OpenCLIP ViT-L-14 (768D vectors)
 - **Multimodal**: Unified embeddings from image + OCR text
 - **Qdrant Storage**: Fast vector similarity search
 - **Deduplication**: SHA256 hashing prevents duplicate ingestion
+- **Rich Filtering**: 🆕 9 filter types (date ranges, tags, OCR text, confidence, device, category)
+- **LLM-Powered Q&A**: 🆕 Ask natural language questions about your image collection
 
 #### **Autonomous Ingestion**
 - **File Watching**: Monitor Pictures, Screenshots, Downloads
 - **Smart Detection**: mtime + hash-based change detection
 - **Background Daemon**: Continuous ingestion with configurable intervals
 - **SQLite Index**: Track processed files, prevent re-ingestion
+- **Auto-Classification**: 🆕 Every image automatically categorized and tagged on ingestion
 
 #### **REST API**
 - **FastAPI**: Modern async Python framework
@@ -106,8 +118,9 @@
 │  │  2. Image Preprocessing (OpenCV)                        │  │
 │  │  3. OCR Extraction (EasyOCR)                           │  │
 │  │  4. EXIF Metadata Extraction                           │  │
-│  │  5. CLIP Embedding (image + text)                      │  │
-│  │  6. Store in Qdrant Vector DB                          │  │
+│  │  5. Auto-Tag & Categorize (Vision Model) 🆕           │  │
+│  │  6. CLIP Embedding (image + text)                      │  │
+│  │  7. Store in Qdrant Vector DB                          │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                                │                                 │
 │                                ▼                                 │
@@ -117,7 +130,8 @@
 │  │  • Visual Similarity (image → image)                    │   │
 │  │  • Semantic Search (text → image)                       │   │
 │  │  • OCR Text Search                                      │   │
-│  │  • EXIF Filtering (date, camera, location)             │   │
+│  │  • Rich Filtering (date, tags, category, device) 🆕    │   │
+│  │  • LLM-Powered Q&A (RAG over images) 🆕                │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                   │
 └─────────────────────────────────────────────────────────────────┘
@@ -153,6 +167,11 @@ ImageStack/
 │   │   ├── image_preprocess.py        # OpenCV preprocessing
 │   │   ├── photobrain_embedding.py    # CLIP embeddings
 │   │   ├── photobrain_store.py        # Qdrant storage
+│   │   ├── photobrain_autotag.py      # Auto-tagging 🆕
+│   │   ├── photobrain_filters.py      # Filter logic 🆕
+│   │   ├── photobrain_text_search.py  # Text search 🆕
+│   │   ├── photobrain_image_search.py # Image search 🆕
+│   │   ├── photobrain_query_service.py # LLM Q&A 🆕
 │   │   └── photobrain_ingest_service.py # Unified pipeline
 │   │
 │   ├── rag/               # ImageRAG Module
@@ -337,6 +356,8 @@ Create a `.env` file in the project root:
 IMAGESTACK_OLLAMA_BASE_URL=http://localhost:11434
 IMAGESTACK_VISION_MODEL=llama3.2-vision:11b
 IMAGESTACK_OCR_MODEL=moondream
+IMAGESTACK_PHOTOBRAIN_QA_MODEL=phi4:14b
+IMAGESTACK_PHOTOBRAIN_AUTOTAG_MODEL=llama3.2-vision:11b  # Optional, defaults to vision_model
 IMAGESTACK_STORAGE_DIR=./storage
 IMAGESTACK_QDRANT_URL=http://localhost:6333
 IMAGESTACK_QDRANT_API_KEY=  # Empty for local
@@ -368,6 +389,10 @@ class Settings(BaseSettings):
     clip_model: str = "ViT-L-14"
     clip_pretrained: str = "openai"
     embedding_dim: int = 768
+    
+    # PhotoBrain AI
+    photobrain_qa_model: str = "phi4:14b"
+    photobrain_autotag_model: str = "llama3.2-vision:11b"
 
     class Config:
         env_prefix = "IMAGESTACK_"
@@ -407,7 +432,7 @@ Returns system health status.
 #### **PhotoBrain Ingestion**
 
 ```http
-POST /photobrain/ingest?ocr=true&preprocess=true&embed=true
+POST /photobrain/ingest?ocr=true&preprocess=true&embed=true&auto_tag=true
 Content-Type: multipart/form-data
 
 file: <image file>
@@ -418,12 +443,13 @@ file: <image file>
 - `vision` (bool): Vision-focused preprocessing (default: false)
 - `preprocess` (bool): Apply image preprocessing (default: true)
 - `embed` (bool): Generate and store CLIP embedding (default: true)
+- `auto_tag` (bool): 🆕 Auto-categorize and generate tags (default: true)
 
 **Response:**
 ```json
 {
   "id": "7e3c1b7f5f1c4e0b8d44e3c1a0e4f9ff",
-  "filename": "photo.jpg",
+  "filename": "receipt.jpg",
   "path_raw": "/storage/images/img_20251121_032500.jpg",
   "path_processed": "/storage/images/img_20251121_032500_proc_ocr.jpg",
   "hash": "a7f8e9d2c3b4a5f6...",
@@ -432,6 +458,13 @@ file: <image file>
   "embedded": true,
   "timestamp": "2025-11-21T03:25:00.123456+00:00",
   "metadata": {
+    "category": "receipt",
+    "tags": ["home depot", "receipt", "hardware", "purchase", "tools"],
+    "autotag": {
+      "model": "llama3.2-vision:11b",
+      "confidence": 0.92,
+      "raw": {"category": "receipt", "tags": [...], "confidence": 0.92}
+    },
     "exif": {
       "datetime_original": "2025:11:20 15:30:00",
       "device_model": "iPhone 14",
@@ -440,6 +473,11 @@ file: <image file>
   }
 }
 ```
+
+**Auto-Tag Categories:**
+- `receipt`, `invoice`, `id_card`, `serial_plate`, `document`, `form`
+- `handwritten_notes`, `whiteboard`, `screenshot`, `info_card`
+- `photo_of_object`, `other`
 
 ---
 
@@ -484,52 +522,114 @@ file: <image file>
 
 ---
 
-#### **Image Search (Visual Similarity)**
+#### **PhotoBrain Text Search** 🆕
 
 ```http
-POST /rag/search/image?limit=5
+POST /photobrain/search/text
+Content-Type: application/json
+
+{
+  "query": "home depot receipt",
+  "top_k": 12,
+  "filters": {
+    "category": "receipt",
+    "days": 30,
+    "contains_text": "home depot",
+    "confidence_min": 0.7
+  }
+}
+```
+
+**Request Body:**
+- `query` (string): Natural language search query
+- `top_k` (int): Number of results (default: 12, max: 50)
+- `filters` (object, optional): Server-side filters
+  - `days` (int): Last N days (relative filter)
+  - `date_min` / `date_max` (datetime): Absolute date ranges
+  - `tag` (string): Single tag substring match
+  - `tags` (array): AND match all tags
+  - `contains_text` (string): OCR text substring
+  - `confidence_min` (float): Minimum OCR confidence (0-1)
+  - `device` (string): Device model substring
+  - `category` (string): Document category
+
+**Response:**
+```json
+{
+  "matches": [
+    {
+      "id": "abc123",
+      "score": 0.94,
+      "filename": "receipt_homedepot_2025.jpg",
+      "path_raw": "/storage/images/receipt.jpg",
+      "hash": "sha256...",
+      "ingested_at": "2025-11-21T10:30:00Z",
+      "ocr_text": "HOME DEPOT\nTotal: $45.99",
+      "ocr_confidence": 0.91,
+      "metadata": {
+        "category": "receipt",
+        "tags": ["home depot", "hardware", "receipt"],
+        "exif": {...}
+      }
+    }
+  ]
+}
+```
+
+---
+
+#### **PhotoBrain Image Search** 🆕
+
+```http
+POST /photobrain/search/image?top_k=12
 Content-Type: multipart/form-data
 
 file: <query image>
 ```
 
-**Response:**
-```json
-[
-  {
-    "id": "abc123",
-    "score": 0.95,
-    "metadata": {
-      "filename": "similar.jpg",
-      "tags": ["beach", "sunset"],
-      "thumb": "base64...",
-      "ocr_text": "..."
-    }
-  }
-]
-```
+**Parameters:**
+- `top_k` (int): Number of results (default: 12, max: 50)
+
+**Response:** Same format as text search (visual similarity)
 
 ---
 
-#### **Semantic Text Search**
+#### **PhotoBrain LLM Q&A** 🆕
 
 ```http
-POST /rag/search/text?query=sunset+beach&limit=5
+POST /photobrain/query
+Content-Type: application/json
+
+{
+  "question": "What is the total on my last Home Depot receipt?",
+  "top_k": 8,
+  "filters": {
+    "category": "receipt",
+    "days": 90
+  }
+}
 ```
+
+**Request Body:**
+- `question` (string): Natural language question
+- `top_k` (int): Number of images to retrieve (default: 8)
+- `filters` (object, optional): Same as text search
 
 **Response:**
 ```json
-[
-  {
-    "id": "def456",
-    "score": 0.88,
-    "metadata": {
-      "filename": "beach_sunset.jpg",
-      "ocr_text": "Vacation 2025",
-      "thumb": "base64..."
+{
+  "answer": "The total on your Home Depot receipt from November 20, 2025 is $45.99.",
+  "matches": [
+    {
+      "id": "abc123",
+      "score": 0.94,
+      "filename": "receipt_homedepot.jpg",
+      "ocr_text": "HOME DEPOT\nTotal: $45.99",
+      "metadata": {...}
     }
-  }
-]
+  ],
+  "raw_answer": "Full LLM response..."
+}
 ```
 
 ---
@@ -566,6 +666,29 @@ python -m cli.imagestack_cli describe path/to/image.jpg
 python -m cli.imagestack_cli ocr path/to/receipt.jpg --preprocess
 ```
 
+**Semantic Search** 🆕
+```powershell
+# Search your entire image memory
+python -m cli.imagestack_cli find "home depot receipt"
+
+# With filters
+python -m cli.imagestack_cli find "serial number" --tag generator --days 30
+```
+
+**Ask Questions (LLM Q&A)** 🆕
+```powershell
+# Ask natural language questions
+python -m cli.imagestack_cli ask "What is the total on my last Home Depot receipt?"
+
+# With filters
+python -m cli.imagestack_cli ask "Show me my generator's serial number" --top-k 5
+```
+
+**CLI Filters:**
+- `--days N`: Last N days
+- `--tag TAG`: Filter by tag (substring match)
+- `--top-k N`: Number of results (for `ask`)
+
 ### PhotoBrain Ingestor
 
 **Single Scan:**
@@ -598,34 +721,42 @@ python -m photobrain.ingestor run
 ## 💡 Use Cases
 
 ### Personal Photo Library Management
-- Auto-ingest photos from phone/camera imports
-- Search photos by visual similarity
-- Find photos by text description: "beach sunset 2024"
-- Extract and search by EXIF data (camera, date, location)
+- **Auto-ingest** photos from phone/camera imports
+- **Auto-categorize** into document types (photos, screenshots, receipts)
+- **Auto-tag** with searchable labels
+- Search photos by visual similarity or text description
+- Filter by date, device, tags: *"beach photos from iPhone, last 30 days"*
+- **Ask questions**: *"Show me all sunset photos from my vacation"*
 
 ### Document & Receipt Organization
-- Auto-OCR receipts dropped in Downloads
-- Search receipts by merchant name or amount
-- Find documents by content
-- Automatic deduplication
+- **Auto-OCR** receipts dropped in Downloads
+- **Auto-categorize** as receipts, invoices, or documents
+- **Auto-tag** with merchant names, document types
+- Search by merchant, amount, or date
+- Filter by category and confidence: *"high-quality receipt scans from Home Depot"*
+- **Ask questions**: *"What's the total on my last utility bill?"*
 
 ### Screenshot Archive & Search
-- Auto-capture and index screenshots
+- **Auto-capture** and index screenshots
+- **Auto-categorize** as screenshots vs other image types
 - OCR extracts all text automatically
-- Search screenshots by content
-- Find error messages, code snippets, URLs
+- Search by content: *"error message about database connection"*
+- Filter by date and text: *"screenshots from last week containing 'API'"*
+- **Ask questions**: *"Show me the error I saw yesterday"*
+
+### Technical Documentation & Diagrams
+- **Auto-categorize** whiteboards, handwritten notes, diagrams
+- **Auto-tag** serial plates, equipment labels
+- Search: *"generator serial number plate"*
+- Filter by category: *"all whiteboard photos from last month"*
+- **Ask questions**: *"What's my HVAC unit's model number?"*
 
 ### Research & Image Collection
-- Build searchable image databases
+- Build searchable image databases with **automatic tagging**
 - Find visually similar images
-- Semantic search across large collections
-- Tag and organize automatically
-
-### Security & Surveillance
-- Index security camera footage
-- Search by visual patterns
-- OCR license plates, signage
-- Face detection (future)
+- Semantic search with rich filters
+- **Ask questions** over entire collection
+- Category-based organization (documents, photos, diagrams)
 
 ---
 
@@ -787,35 +918,45 @@ $env:PHOTOBRAIN_WATCH_DIRS="C:\Users\Matt\Pictures"
 
 ## 🗺️ Roadmap
 
-### ✅ Completed (v0.3.0)
-- [x] Ollama vision integration
-- [x] EasyOCR with GPU
-- [x] OpenCV preprocessing pipelines
-- [x] CLIP embeddings
-- [x] Qdrant vector storage
-- [x] Autonomous file watching
-- [x] Multimodal embeddings
-- [x] EXIF extraction
-- [x] Debug laboratory
+### ✅ Completed (v0.5.0)
+- [x] **Phase 0-1**: Ollama vision integration + EasyOCR with GPU
+- [x] **Phase 1.5**: OpenCV preprocessing pipelines + debug lab
+- [x] **Phase A.1**: Autonomous file watching daemon
+- [x] **Phase A.2**: Enhanced ingestion (CLIP + Qdrant + EXIF + OCR)
+- [x] **Phase A.3**: Query API (text search, image search, LLM Q&A)
+- [x] **Phase A.4**: Rich server-side filters (9 filter types)
+- [x] **Phase A.5**: Auto-tagging & categorization (12 document types)
+- [x] Multimodal embeddings (image + text)
+- [x] CLI tools (describe, ocr, find, ask)
+- [x] Deduplication (SHA256 + mtime tracking)
 
-### 🚧 In Progress (v0.4.0)
-- [ ] Face detection & clustering
-- [ ] Batch ingestion API
-- [ ] Web dashboard UI
-- [ ] Real-time file watching (inotify)
-- [ ] Advanced search filters
+### 🚧 In Progress (v0.6.0)
+- [ ] Web dashboard UI (React + real-time updates)
+- [ ] Real-time file watching (inotify/watchdog)
+- [ ] Batch operations API
+- [ ] Export/import collections
+- [ ] Image editing & cropping in debug lab
 
-### 🔮 Future (v1.0.0+)
-- [ ] Mobile app (iOS/Android)
-- [ ] Distributed ingestion (multi-node)
+### 🔮 Near Future (v0.7.0 - v0.9.0)
+- [ ] Face detection & clustering (OpenCV/dlib)
+- [ ] Advanced deduplication (perceptual hashing with pHash)
+- [ ] Custom category training (fine-tune auto-tagger)
+- [ ] Audio transcription for video files (Whisper)
+- [ ] Object detection & tagging (YOLO/DETR)
+- [ ] Geo-tagging & interactive maps
+- [ ] Collections & smart albums
+- [ ] PDF ingestion & per-page indexing
+- [ ] Duplicate image detection & merging
+
+### 🔮 Long-Term (v1.0.0+)
+- [ ] Mobile app (iOS/Android with photo sync)
+- [ ] Distributed ingestion (multi-node Qdrant cluster)
 - [ ] Video frame extraction & indexing
-- [ ] Audio transcription
-- [ ] Advanced deduplication (perceptual hashing)
-- [ ] Object detection & tagging
-- [ ] Geo-tagging & maps
-- [ ] Collections & albums
-- [ ] Sharing & collaboration
-- [ ] Cloud backup integration
+- [ ] Advanced privacy features (on-device encryption)
+- [ ] Sharing & collaboration (secure links)
+- [ ] Cloud backup integration (S3/B2 compatible)
+- [ ] Plugin system for custom processors
+- [ ] Multi-user support with permissions
 
 ---
 
@@ -871,3 +1012,4 @@ Built with:
 **Made with ❤️ for the local-first AI community**
 
 *Keep your visual memories private, searchable, and under your control.*
+
