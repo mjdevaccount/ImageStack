@@ -44,3 +44,9 @@ Thumbs.db
 # Project specific
 *.log
 
+# PhotoBrain data
+.photobrain/
+*.db
+*.db-shm
+*.db-wal
+
