@@ -208,6 +208,7 @@ ImageStack/
 │
 ├── scripts/               # Helper Scripts
 │   ├── start_api.ps1
+│   ├── stop_api.ps1
 │   ├── start_photobrain_ingestor.ps1
 │   └── verify_setup.ps1
 │
@@ -508,21 +509,30 @@ See [First Image Ingestion](#first-image-ingestion) section below for more detai
 
 ### Stopping the Server
 
+**Recommended: Use the stop script**
+```powershell
+cd C:\ImageStack
+.\scripts\stop_api.ps1
+```
+
+The stop script will:
+- Find and kill processes listening on port 8090
+- Clean up any Python/uvicorn processes
+- Verify the server stopped successfully
+
+**Alternative: Manual stop**
 ```powershell
 # If running in terminal: Press CTRL+C
 
-# Or kill the process:
+# Or kill all Python processes:
 Get-Process | Where-Object {$_.ProcessName -eq "python"} | Stop-Process -Force
 ```
 
 ### Restarting the Server
 
 ```powershell
-# Stop it first
-Get-Process | Where-Object {$_.ProcessName -eq "python"} | Stop-Process -Force
-
-# Wait a moment
-Start-Sleep -Seconds 2
+# Stop the server
+.\scripts\stop_api.ps1
 
 # Start again
 .\scripts\start_api.ps1
