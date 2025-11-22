@@ -229,48 +229,102 @@ ImageStack/
 
 ### 5-Minute Setup
 
+**Important:** Follow these steps IN ORDER to avoid issues.
+
 ```powershell
 # 1. Clone repository
 git clone https://github.com/mjdevaccount/ImageStack.git
 cd ImageStack
 
-# 2. Create virtual environment
+# 2. Create virtual environment (REQUIRED - don't skip this!)
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1  # Windows
+.\.venv\Scripts\Activate.ps1  # Windows PowerShell
 # source .venv/bin/activate    # Linux/Mac
 
 # 3. Install dependencies
 pip install -r requirements.txt
+# Note: First run will download ~500MB of EasyOCR models
 
-# 4. Start Qdrant (vector database)
-docker run -p 6333:6333 -d qdrant/qdrant
+# 4. Start Qdrant (vector database) - MUST be running before starting API
+docker run -d -p 6333:6333 -p 6334:6334 --name qdrant qdrant/qdrant
+
+# Verify Qdrant is running:
+curl http://localhost:6333
 
 # 5. Start Ollama and pull vision model
-ollama serve
+# Make sure Ollama is running as a service, then:
 ollama pull llama3.2-vision:11b
+ollama pull phi4:14b
 
-# 6. Start ImageStack API
-cd python_server
-uvicorn main:app --reload --port 8090
+# 6. Start ImageStack API (from project root!)
+.\scripts\start_api.ps1
+# OR manually:
+# python -m uvicorn python_server.main:app --host 0.0.0.0 --port 8090 --reload
 ```
 
 **Test the API:**
 ```powershell
-# Health check
+# Health check (should return {"status":"ok"})
 curl http://localhost:8090/health/
 
-# API documentation
+# API documentation in browser
 Start http://localhost:8090/docs
 ```
 
+**Common Startup Issues:**
+- ❌ **"No module named..."**: Virtual environment not activated or dependencies not installed
+- ❌ **Connection refused (Qdrant)**: Start Qdrant with Docker first
+- ❌ **Unicode encoding error**: Fixed in start script - use `.\scripts\start_api.ps1`
+- ❌ **Import error with config**: Make sure you're running from the project root directory
+
 ### First Image Ingestion
 
-```powershell
-# Ingest a single image
-curl -F "file=@photo.jpg" http://localhost:8090/photobrain/ingest
+**⚠️ You MUST ingest at least one image before using query features!**
 
-# Or use the ingestor to scan a directory
+**Make sure the server is running first!** (See above)
+
+#### Option 1: Upload Single Image via API
+
+```powershell
+# Upload any image (replace path with your image)
+curl -F "file=@C:\Photos\test.jpg" http://localhost:8090/photobrain/ingest
+
+# Expected response: JSON with image metadata, tags, and embedding confirmation
+```
+
+#### Option 2: Use Interactive API Docs
+
+1. Open browser: http://localhost:8090/docs
+2. Navigate to **POST /photobrain/ingest**
+3. Click "Try it out"
+4. Upload a test image
+5. Click "Execute"
+
+#### Option 3: Batch Ingest from Directory
+
+```powershell
+# Activate venv first
+.\.venv\Scripts\Activate.ps1
+
+# Set watch directory (where your images are)
+$env:PHOTOBRAIN_WATCH_DIRS="C:\Users\Matt\Pictures"
+
+# Run single scan
 python -m photobrain.ingestor once
+
+# Or start continuous watcher
+python -m photobrain.ingestor run
+```
+
+#### Verify Images Were Ingested
+
+```powershell
+# Check Qdrant database
+curl http://localhost:6333/collections/photobrain
+# Look for: "points_count": <number greater than 0>
+
+# Or check via API
+Invoke-WebRequest -Uri "http://localhost:8090/photobrain/search/text" -Method POST -ContentType "application/json" -Body '{"query": "anything", "top_k": 5}'
 ```
 
 ---
@@ -294,9 +348,25 @@ python -m photobrain.ingestor once
 
 ### Detailed Installation
 
-#### 1. Install Python Dependencies
+#### 1. Create Virtual Environment (CRITICAL STEP!)
 
 ```powershell
+# From project root (C:\ImageStack)
+python -m venv .venv
+
+# Activate it (Windows PowerShell)
+.\.venv\Scripts\Activate.ps1
+
+# Linux/Mac
+# source .venv/bin/activate
+```
+
+**⚠️ Important:** Always activate the virtual environment before running any Python commands!
+
+#### 2. Install Python Dependencies
+
+```powershell
+# Make sure venv is activated first!
 pip install -r requirements.txt
 ```
 
@@ -310,7 +380,9 @@ pip install -r requirements.txt
 - `torch>=2.2.0` - Deep learning framework
 - `httpx==0.27.2` - HTTP client for Ollama
 
-#### 2. Install Ollama
+**Note:** First install will download large ML models (~2GB total)
+
+#### 3. Install Ollama
 
 **Windows:**
 ```powershell
@@ -330,14 +402,24 @@ ollama pull llama3.2-vision:11b  # Primary vision model
 ollama pull moondream            # Optional: Faster, lighter model
 ```
 
-#### 3. Install Qdrant
+#### 4. Install Qdrant
 
 **Docker (Recommended):**
-```bash
-docker run -p 6333:6333 -p 6334:6334 -v $(pwd)/qdrant_storage:/qdrant/storage qdrant/qdrant
+```powershell
+# Windows/Linux/Mac
+docker run -d -p 6333:6333 -p 6334:6334 --name qdrant qdrant/qdrant
+
+# With persistent storage (optional):
+# docker run -d -p 6333:6333 -p 6334:6334 -v ${PWD}/qdrant_storage:/qdrant/storage --name qdrant qdrant/qdrant
 ```
 
-**Binary Installation:**
+**Verify Qdrant is running:**
+```powershell
+curl http://localhost:6333
+# Should return Qdrant version info
+```
+
+**Binary Installation (Alternative):**
 ```bash
 # Download from https://github.com/qdrant/qdrant/releases
 wget https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-pc-windows-msvc.zip
@@ -345,16 +427,105 @@ unzip qdrant-x86_64-pc-windows-msvc.zip
 ./qdrant
 ```
 
-#### 4. Verify Installation
+#### 5. Verify Installation
 
 ```powershell
 # Run verification script
 .\scripts\verify_setup.ps1
 
 # Or manual checks
+.\.venv\Scripts\Activate.ps1  # Activate venv first!
 python --version          # Should be 3.10+
 ollama list              # Should show llama3.2-vision:11b
-curl http://localhost:6333/collections  # Qdrant health
+curl http://localhost:6333  # Qdrant should respond
+docker ps | Select-String "qdrant"  # Qdrant container should be running
+```
+
+---
+
+## 🚀 How to Start the Server
+
+### Prerequisites Checklist
+
+Before starting, verify these are running:
+
+```powershell
+# 1. Check Qdrant is running
+docker ps | Select-String "qdrant"
+# If not running: docker start qdrant
+# If doesn't exist: docker run -d -p 6333:6333 -p 6334:6334 --name qdrant qdrant/qdrant
+
+# 2. Check Ollama has models
+ollama list
+# Should show: llama3.2-vision:11b and phi4:14b
+# If missing: ollama pull llama3.2-vision:11b && ollama pull phi4:14b
+
+# 3. Check virtual environment exists
+Test-Path .\.venv\Scripts\Activate.ps1
+# Should return: True
+# If False: python -m venv .venv
+```
+
+### Starting the Server
+
+**Option 1: Use the Start Script (Recommended)**
+```powershell
+cd C:\ImageStack
+.\scripts\start_api.ps1
+```
+
+**Option 2: Manual Start**
+```powershell
+cd C:\ImageStack
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn python_server.main:app --host 0.0.0.0 --port 8090 --reload
+```
+
+**Verify it's running:**
+```powershell
+# Wait ~10 seconds for models to load, then:
+curl http://localhost:8090/health/
+# Should return: {"status":"ok"}
+```
+
+**⚠️ IMPORTANT: Before Using Query Features**
+
+The server will return **500 errors** on query endpoints until you ingest at least one image:
+
+```powershell
+# Quick test with any image
+curl -F "file=@C:\path\to\photo.jpg" http://localhost:8090/photobrain/ingest
+
+# Or use the browser: http://localhost:8090/docs
+# Navigate to POST /photobrain/ingest and upload a test image
+
+# Verify it worked:
+curl http://localhost:6333/collections/photobrain
+# Should show: "points_count": 1 or more
+```
+
+See [First Image Ingestion](#first-image-ingestion) section below for more details.
+
+### Stopping the Server
+
+```powershell
+# If running in terminal: Press CTRL+C
+
+# Or kill the process:
+Get-Process | Where-Object {$_.ProcessName -eq "python"} | Stop-Process -Force
+```
+
+### Restarting the Server
+
+```powershell
+# Stop it first
+Get-Process | Where-Object {$_.ProcessName -eq "python"} | Stop-Process -Force
+
+# Wait a moment
+Start-Sleep -Seconds 2
+
+# Start again
+.\scripts\start_api.ps1
 ```
 
 ---
@@ -839,18 +1010,42 @@ mypy python_server/ photobrain/ cli/
 
 ### Common Issues
 
-#### **Qdrant Connection Failed**
+#### **Virtual Environment Not Found**
 ```
-Error: Connection to Qdrant failed
+Error: .venv\Scripts\python.exe not found
 ```
 
 **Solution:**
 ```powershell
-# Check Qdrant is running
-curl http://localhost:6333/collections
+# Create the virtual environment
+python -m venv .venv
 
-# Start Qdrant
-docker run -p 6333:6333 -d qdrant/qdrant
+# Activate it
+.\.venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+#### **Qdrant Connection Failed**
+```
+Error: Connection to Qdrant failed
+Error: [WinError 10061] No connection could be made
+```
+
+**Solution:**
+```powershell
+# Check if Qdrant is running
+docker ps | Select-String "qdrant"
+
+# If not running, start it:
+docker start qdrant
+
+# If container doesn't exist:
+docker run -d -p 6333:6333 -p 6334:6334 --name qdrant qdrant/qdrant
+
+# Verify it's working:
+curl http://localhost:6333
 ```
 
 #### **Ollama Model Not Found**
@@ -861,7 +1056,66 @@ Error: Model llama3.2-vision:11b not found
 **Solution:**
 ```powershell
 ollama pull llama3.2-vision:11b
+ollama pull phi4:14b
 ollama list  # Verify installation
+```
+
+#### **Import Errors / Config Not Found**
+```
+ImportError: cannot import name 'settings' from 'python_server.config'
+```
+
+**Solution:**
+```powershell
+# Make sure you're running from the project root:
+cd C:\ImageStack
+
+# Use the start script (fixes paths automatically):
+.\scripts\start_api.ps1
+```
+
+#### **Unicode/Encoding Errors**
+```
+UnicodeEncodeError: 'charmap' codec can't encode character
+```
+
+**Solution:**
+```powershell
+# Use the provided start script (has encoding fixes):
+.\scripts\start_api.ps1
+
+# Or set encoding manually:
+$env:PYTHONIOENCODING = "utf-8"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+```
+
+#### **Query Endpoints Return 500 Internal Server Error**
+```
+POST /photobrain/query -> 500 Internal Server Error
+POST /photobrain/search/text -> 500 Internal Server Error
+```
+
+**Cause:** No images have been ingested into the database yet.
+
+**Solution:**
+```powershell
+# Check if database is empty
+curl http://localhost:6333/collections/photobrain
+# If "points_count": 0, you need to ingest images
+
+# Upload a test image
+curl -F "file=@C:\Photos\test.jpg" http://localhost:8090/photobrain/ingest
+
+# Or use the interactive API docs
+Start http://localhost:8090/docs
+# Navigate to POST /photobrain/ingest and upload an image
+
+# Verify it worked
+curl http://localhost:6333/collections/photobrain
+# Should now show "points_count": 1 or more
+
+# Now queries should work
+Invoke-WebRequest -Uri "http://localhost:8090/photobrain/query" -Method POST -ContentType "application/json" -Body '{"question": "What images do I have?", "top_k": 5}'
 ```
 
 #### **CUDA Out of Memory**
@@ -1032,12 +1286,43 @@ Built with:
 
 ## 📊 Project Stats
 
-- **Version**: 0.3.0
+- **Version**: 0.5.1
 - **Python**: 3.10+
 - **Lines of Code**: ~5000+
 - **API Endpoints**: 10+
 - **Dependencies**: 15+
 - **Platforms**: Windows, Linux, macOS
+
+## 🔧 Recent Critical Fixes (v0.5.1)
+
+**If you cloned this repo before November 22, 2025, please note these critical fixes:**
+
+1. **Start Script Now Uses Virtual Environment**
+   - `scripts/start_api.ps1` now explicitly uses `.venv\Scripts\python.exe`
+   - Fixes "ModuleNotFoundError" issues
+
+2. **Storage Path Fixed**
+   - Changed from relative `"../storage"` to absolute path in `config.py`
+   - Prevents images being saved to wrong location
+
+3. **EXIF Serialization Fixed**
+   - PIL `IFDRational` types now properly converted to JSON-serializable floats
+   - Fixes "PydanticSerializationError" on image upload
+
+4. **Config Import Fixed**
+   - `python_server/config/__init__.py` now properly exposes `settings`
+   - Resolves import conflicts between `config.py` and `config/` directory
+
+5. **UTF-8 Encoding**
+   - Start script sets `PYTHONIOENCODING=utf-8` to handle Unicode progress bars
+   - Prevents crashes during EasyOCR model downloads
+
+**To update your installation:**
+```powershell
+git pull
+# Restart your server - the fixes are automatic
+.\scripts\start_api.ps1
+```
 
 ---
 

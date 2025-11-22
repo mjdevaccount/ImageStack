@@ -36,6 +36,7 @@ def _compute_sha256(path: Path) -> str:
 
 
 def _extract_exif_metadata(path: Path) -> dict:
+    """Extract EXIF metadata and convert all values to JSON-serializable types."""
     meta: dict = {}
     try:
         img = Image.open(path)
@@ -43,11 +44,25 @@ def _extract_exif_metadata(path: Path) -> dict:
         if not exif:
             return meta
 
-        # Map numeric tags → human-readable
+        # Map numeric tags → human-readable and convert to JSON-serializable types
         tagged = {}
         for tag_id, value in exif.items():
             tag = ExifTags.TAGS.get(tag_id, tag_id)
-            tagged[tag] = value
+            # Convert PIL types to standard Python types
+            if hasattr(value, 'numerator') and hasattr(value, 'denominator'):
+                # IFDRational type - convert to float
+                tagged[tag] = float(value)
+            elif isinstance(value, bytes):
+                # Bytes - try to decode or represent as hex
+                try:
+                    tagged[tag] = value.decode('utf-8', errors='ignore')
+                except:
+                    tagged[tag] = value.hex()
+            elif isinstance(value, (list, tuple)):
+                # Recursively convert sequences
+                tagged[tag] = [float(v) if hasattr(v, 'numerator') else v for v in value]
+            else:
+                tagged[tag] = value
 
         # Extract some common fields
         if "DateTimeOriginal" in tagged:
