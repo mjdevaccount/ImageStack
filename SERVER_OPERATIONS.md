@@ -1,4 +1,4 @@
-# Quick Start Guide: PhotoBrain API Server
+# PhotoBrain Server Operations Guide
 
 ## Prerequisites Checklist
 
