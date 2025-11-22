@@ -21,6 +21,11 @@ class PhotoBrainSearchMatch(BaseModel):
     ocr_text: Optional[str] = None
     ocr_confidence: Optional[float] = None
     metadata: dict = Field(default_factory=dict)
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None
+        }
 
 
 class PhotoBrainTextSearchRequest(BaseModel):

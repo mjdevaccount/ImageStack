@@ -42,12 +42,12 @@ class PhotoBrainQueryService:
         # 1) Retrieve relevant images (using text embedding)
         vec = self.embedder.embed_text(question).astype("float32").tolist()
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=vec,
+            query=vec,
             limit=top_k,
             with_payload=True,
-        )
+        ).points
 
         matches: List[PhotoBrainSearchMatch] = []
         for r in results:

@@ -43,12 +43,12 @@ class PhotoBrainImageSearchService:
         # to compensate for filtered-out items
         retrieve_k = top_k * 3 if filters else top_k
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=vec,
+            query=vec,
             limit=retrieve_k,
             with_payload=True,
-        )
+        ).points
 
         matches: List[PhotoBrainSearchMatch] = []
         for r in results:
