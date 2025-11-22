@@ -159,21 +159,30 @@ Once server is running at `http://localhost:8090`:
 
 ## Stopping the Server
 
+### Option 1: Using Stop Script (Recommended)
+```powershell
+cd C:\ImageStack
+.\scripts\stop_api.ps1
+```
+
+The stop script will:
+- Find and kill processes listening on port 8090
+- Clean up any Python/uvicorn processes
+- Verify the server stopped successfully
+
+### Option 2: Manual Stop
 ```powershell
 # If running in terminal: Press CTRL+C
 
-# Or kill the process:
+# Or kill all Python processes:
 Get-Process | Where-Object {$_.ProcessName -eq "python"} | Stop-Process -Force
 ```
 
 ## Restarting the Server
 
 ```powershell
-# Stop it
-Get-Process | Where-Object {$_.ProcessName -eq "python"} | Stop-Process -Force
-
-# Wait
-Start-Sleep -Seconds 2
+# Stop the server
+.\scripts\stop_api.ps1
 
 # Start again
 .\scripts\start_api.ps1
@@ -196,11 +205,11 @@ pip install -r requirements.txt
 
 ### Port Already in Use
 ```powershell
-# Check what's using port 8090
-netstat -ano | findstr :8090
+# Use the stop script to clean up
+.\scripts\stop_api.ps1
 
-# Kill the process if it's a stuck Python process
-Get-Process | Where-Object {$_.ProcessName -eq "python"} | Stop-Process -Force
+# Or check manually what's using port 8090
+netstat -ano | findstr :8090
 
 # Or use a different port
 .\scripts\start_api.ps1 -Port 8091
